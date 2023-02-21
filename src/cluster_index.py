@@ -29,6 +29,7 @@
 #
 
 # %%
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -57,10 +58,8 @@ score_funcs = [
     ("FMI", metrics.fowlkes_mallows_score),
 ]
 
-seed = 42
 
-
-def perform_bayesspace(sample, label_series, step):
+def perform_bayesspace(sample, label_series, step, seed=None):
     bayesspace_result = {}
 
     for method in ["SVGbit", "SOMDE", "SpatialDE", "spark", "SPARK"]:
@@ -70,12 +69,19 @@ def perform_bayesspace(sample, label_series, step):
         cluster_results = {}
         flag = 0
         for begin in range(0, step * 5, step):
-            read_path = Path.joinpath(
-                WORKDIR,
-                "results/bayesspace/",
-                f"seed-{seed}/",
-                f"{sample}-{method}-{begin}_{begin + step}-bayesspace.csv",
-            )
+            if seed is None:
+                read_path = Path.joinpath(
+                    WORKDIR,
+                    "results/bayesspace/",
+                    f"{sample}-{method}-{begin}_{begin + step}-bayesspace.csv",
+                )
+            else:
+                read_path = Path.joinpath(
+                    WORKDIR,
+                    "results/bayesspace/",
+                    f"seed-{seed}/",
+                    f"{sample}-{method}-{begin}_{begin + step}-bayesspace.csv",
+                )
             try:
                 read_df = pd.read_csv(read_path, index_col=0, header=0)
                 cluster_result = read_df["spatial.cluster"]
@@ -195,9 +201,15 @@ def draw_matrix(result_dict, sample, step, title, matrix="ARI"):
         draw_df = pd.concat([draw_df, draw_sub], axis=1)
 
     fig, ax = plt.subplots(figsize=(10, 10))
-    plot = ax.plot(draw_df, marker="o")
+    for i, method in enumerate(draw_df):
+        ax.plot(
+            draw_df[method],
+            marker="o",
+            c=plt.cm.Set1.colors[i],
+            label=method,
+        )
     plt.setp(ax.get_xticklabels(), rotation=45)
-    ax.legend(plot, draw_df.columns)
+    ax.legend()
     ax.set_ylim([0, 0.6])
     fig.savefig(
         f"results/cluster_index/{sample}-step{step}-{title}-{matrix}.svg",
@@ -206,32 +218,90 @@ def draw_matrix(result_dict, sample, step, title, matrix="ARI"):
     plt.close(fig)
 
 
-def draw_cluster(result_dict, label_series, s, title, he_image=None):
-    for method in result_dict:
+def draw_cluster(
+    result_dict,
+    label_series,
+    s,
+    title,
+    he_image=None,
+    draw_others=False,
+    read_color_json=True,
+    seed=None,
+):
+    if draw_others:
+        methods = result_dict.keys()
+    else:
+        methods = ["SVGbit"]
+    label_series = replace_label(label_series)
+    for method in methods:
+        if read_color_json:
+            if seed is None:
+                json_path = Path.joinpath(
+                    WORKDIR, f"results/{title}/{sample}-{method}.json")
+            else:
+                json_path = Path.joinpath(
+                    WORKDIR,
+                    f"results/{title.lower()}/",
+                    f"seed-{seed}/",
+                    f"{sample}-{method}.json",
+                )
+            with open(json_path) as f:
+                color_json = json.load(f)
+        else:
+            color_json = None
         ncol = len(result_dict[method]["result"]) + 1
         fig, axes = plt.subplots(1, ncol, figsize=(ncol * 10, 10))
         [ax.axis("off") for ax in axes]
         if he_image is not None:
             [ax.imshow(he_image) for ax in axes]
-        axes[0].scatter(
-            coor_df["X"],
-            coor_df["Y"],
-            s=s,
-            cmap="tab20",
-            c=replace_label(label_series),
-        )
-        axes[0].set_title("Annotation region")
-        for ax, rank in zip(axes[1:], result_dict[method]["result"]):
-            ax.scatter(
+        if color_json is None:
+            sc = axes[0].scatter(
                 coor_df["X"],
                 coor_df["Y"],
                 s=s,
                 cmap="tab20",
-                c=result_dict[method]["result"][rank],
+                c=label_series,
             )
+            legend = axes[0].legend(*sc.legend_elements())
+            axes[0].add_artist(legend)
+        else:
+            for i in color_json["anno"]:
+                spots = label_series[label_series == int(i)].index
+                axes[0].scatter(
+                    coor_df["X"].reindex(index=spots),
+                    coor_df["Y"].reindex(index=spots),
+                    s=s,
+                    cmap="tab20",
+                    c=color_json["anno"][i],
+                    label=i,
+                )
+            axes[0].legend(ncol=2)
+        axes[0].set_title("Annotated region")
+        for ax, rank in zip(axes[1:], result_dict[method]["result"]):
+            c = result_dict[method]["result"][rank]
+            if color_json is not None:
+                if rank in color_json:
+                    for i in color_json[rank]:
+                        c = c.replace(int(i), color_json[rank][i])
+            if color_json is None:
+                sc = ax.scatter(coor_df["X"], coor_df["Y"], s=s, cmap="tab20", c=c)
+                legend = ax.legend(*sc.legend_elements())
+                ax.add_artist(legend)
+            else:
+                for i in color_json[rank]:
+                    spots = label_series[label_series == int(i)].index
+                    axes[0].scatter(
+                        coor_df["X"].reindex(index=spots),
+                        coor_df["Y"].reindex(index=spots),
+                        s=s,
+                        cmap="tab20",
+                        c=color_json[rank][i],
+                        label=i,
+                    )
+                ax.legend(ncol=2)
             ax.set_title(rank)
         fig.savefig(
-            f"results/cluster_index/{sample}-step{step}-{method}-{title}.svg",
+            f"results/cluster_index/{sample}-step{step}-{method}-{title}.jpg",
             bbox_inches="tight",
         )
         plt.close(fig)
@@ -243,48 +313,78 @@ def draw_cluster_separate(
     s,
     title,
     he_image=None,
-    im_format="jpg",
+    draw_others=False,
+    read_color_json=True,
+    seed=None,
 ):
-    for method in result_dict:
+    if draw_others:
+        methods = result_dict.keys()
+    else:
+        methods = ["SVGbit"]
+    label_series = replace_label(label_series)
+    for method in methods:
+        if read_color_json:
+            if seed is None:
+                json_path = Path.joinpath(
+                    WORKDIR, f"results/{title}/{sample}-{method}.json")
+            else:
+                json_path = Path.joinpath(
+                    WORKDIR,
+                    f"results/{title.lower()}/",
+                    f"seed-{seed}/",
+                    f"{sample}-{method}.json",
+                )
+            with open(json_path) as f:
+                color_json = json.load(f)
+        else:
+            color_json = None
         fig, ax = plt.subplots(figsize=(10, 10))
         ax.axis("off")
         ax.imshow(he_image) if he_image is not None else None
+        if color_json is not None:
+            for i in color_json["anno"]:
+                label_series = label_series.replace(
+                    int(i),
+                    color_json["anno"][i],
+                )
         ax.scatter(
             coor_df["X"],
             coor_df["Y"],
             s=s,
             cmap="tab20",
-            c=replace_label(label_series),
+            c=label_series,
         )
         ax.set_title("Annotation region")
         fig.savefig(
             Path.joinpath(
                 WORKDIR,
                 f"results/cluster_index/",
-                f"{sample}-step{step}-{method}-{title}-all.{im_format}",
+                f"{sample}-step{step}-{method}-{title}-all.png",
             ),
             bbox_inches="tight",
+            transparent=True,
         )
         plt.close(fig)
         for rank in result_dict[method]["result"]:
+            c = result_dict[method]["result"][rank]
+            if color_json is not None:
+                if rank in color_json:
+                    for i in color_json[rank]:
+                        c = c.replace(int(i), color_json[rank][i])
             fig, ax = plt.subplots(figsize=(10, 10))
             ax.imshow(he_image) if he_image is not None else None
             ax.axis("off")
-            ax.scatter(
-                coor_df["X"],
-                coor_df["Y"],
-                s=s,
-                cmap="tab20",
-                c=result_dict[method]["result"][rank],
-            )
+            ax.scatter(coor_df["X"], coor_df["Y"], s=s, cmap="tab20", c=c)
             ax.set_title(rank)
+            rank = rank.replace(" - ", "_")
             fig.savefig(
                 Path.joinpath(
                     WORKDIR,
                     f"results/cluster_index/",
-                    f"{sample}-step{step}-{method}-{title}-{rank}.{im_format}",
+                    f"{sample}-step{step}-{method}-{title}-{rank}.png",
                 ),
                 bbox_inches="tight",
+                transparent=True,
             )
             plt.close(fig)
 
@@ -354,20 +454,6 @@ def draw_umap(rank_dict, count_df, label_series, step):
 
 
 # %%
-sample = "E9.5_E1S1.MOSTA"
-count_df, coor_df = read_func.read_stereo(sample)
-label_series = read_label.read_stereo_label(sample)
-coor_df = coor_df.reindex(index=count_df.index)
-label_series = label_series.reindex(index=coor_df.index)
-rank_dict = read_rank(sample)
-
-for step in (500, ):
-    bayesspace_result = perform_bayesspace(sample, label_series, step)
-    draw_matrix(bayesspace_result, sample, step, "BayesSpace", "ARI")
-    draw_cluster(bayesspace_result, label_series, 64, "BayesSpace")
-    draw_tsne(rank_dict, count_df, label_series, step)
-
-# %%
 sample = 151673
 count_df, coor_df, *_ = read_func.read_dlpfc(sample)
 label_series = read_label.read_dlpfc_label(sample).reindex(
@@ -378,27 +464,48 @@ sample = f"DLPFC-{sample}"
 rank_dict = read_rank(sample)
 
 for step in (500, ):
-    bayesspace_result = perform_bayesspace(sample, label_series, step)
+    bayesspace_result = perform_bayesspace(sample, label_series, step, seed=42)
     draw_matrix(bayesspace_result, sample, step, "BayesSpace", "ARI")
-    draw_cluster(bayesspace_result, label_series, 16, "BayesSpace", he_image)
-    kmeans_result = perform_kmeans(rank_dict, count_df, label_series, step)
-    draw_cluster(kmeans_result, label_series, 16, "kmeans", he_image)
+    draw_cluster(
+        bayesspace_result,
+        label_series,
+        32,
+        "BayesSpace",
+        he_image,
+        read_color_json=True,
+        seed=42,
+    )
+    draw_cluster_separate(
+        {"SVGbit": bayesspace_result["SVGbit"]},
+        label_series,
+        50,
+        "BayesSpace",
+        read_color_json=True,
+        seed=42,
+    )
 
 # %%
 sample = "Mouse_brain"
 count_df, coor_df = read_func.read_stereo(sample)
 label_series = read_label.read_stereo_label(sample)
 coor_df = coor_df.reindex(index=count_df.index)
-label_series = label_series.reindex(index=coor_df.index)
+label_series = label_series.reindex(index=coor_df.index).astype("str")
 rank_dict = read_rank(sample)
 
 for step in (500, ):
     bayesspace_result = perform_bayesspace(sample, label_series, step)
     draw_matrix(bayesspace_result, sample, step, "BayesSpace", "ARI")
+    draw_cluster(
+        bayesspace_result,
+        label_series,
+        8,
+        "BayesSpace",
+        read_color_json=False,
+    )
     draw_cluster_separate(
         {"SVGbit": bayesspace_result["SVGbit"]},
         label_series,
-        16,
+        8,
         "BayesSpace",
-        im_format="png",
+        read_color_json=False,
     )

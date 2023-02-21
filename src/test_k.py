@@ -49,8 +49,8 @@ def perform_k_coor(count_df, coor_df, sample):
         d = sb.filters.high_expression_filter(d, 0.99)
         d = sb.normalizers.logcpm_normalizer(d)
         d.acquire_weight(k=k)
-        d.acquire_hotspot(cores=5)
-        d.acquire_density(cores=5)
+        d.acquire_hotspot(cores=3)
+        d.acquire_density(cores=3)
         ai_series = d.AI.copy()
         ai_series.name = k
         ai_dict[k] = ai_series
@@ -97,3 +97,9 @@ def perform_k_coor(count_df, coor_df, sample):
 sample = 151673
 count_df, coor_df, *_ = read_func.read_dlpfc(sample)
 perform_k_coor(count_df, coor_df, f"DLPFC-{sample}")
+
+
+# %%
+sample = "Mouse_brain"
+count_df, coor_df, *_ = read_func.read_stereo(sample)
+perform_k_coor(count_df, coor_df, sample)
