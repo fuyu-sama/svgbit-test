@@ -115,3 +115,10 @@ def read_dlpfc(sample):
     logcount_df = logcount_df.drop(index=na_spots)
 
     return (count_df, coor_df, logcount_df)
+
+
+def read_self(sample):
+    path = Path.joinpath(WORKDIR, f"data/mouse-brain-full/{sample}/outs")
+    d = sb.load_10X(path, make_sparse=False)
+    d = sb.filters.low_variance_filter(d, 0)
+    return (d.count_df, d.coordinate_df)
