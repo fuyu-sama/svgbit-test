@@ -33,6 +33,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from sklearn import metrics
@@ -187,7 +188,7 @@ def perform_kmeans(rank_dict, *args, **kwargs):
     return kmeans_result_dict
 
 
-def draw_matrix(result_dict, sample, step, title, matrix="ARI"):
+def draw_matrix(result_dict, sample, step, title, matrix="ARI", vmax=0.6):
     draw_df = pd.DataFrame()
     for method in result_dict:
         draw_sub = pd.Series()
@@ -200,7 +201,7 @@ def draw_matrix(result_dict, sample, step, title, matrix="ARI"):
             draw_sub.name = method
         draw_df = pd.concat([draw_df, draw_sub], axis=1)
 
-    fig, ax = plt.subplots(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=(8, 4))
     for i, method in enumerate(draw_df):
         ax.plot(
             draw_df[method],
@@ -210,7 +211,7 @@ def draw_matrix(result_dict, sample, step, title, matrix="ARI"):
         )
     plt.setp(ax.get_xticklabels(), rotation=45)
     ax.legend()
-    ax.set_ylim([0, 0.6])
+    ax.set_ylim([0, vmax])
     fig.savefig(
         f"results/cluster_index/{sample}-step{step}-{title}-{matrix}.svg",
         bbox_inches="tight",
@@ -233,6 +234,7 @@ def draw_cluster(
     else:
         methods = ["SVGbit"]
     label_series = replace_label(label_series)
+
     for method in methods:
         if read_color_json:
             if seed is None:
@@ -249,56 +251,82 @@ def draw_cluster(
                 color_json = json.load(f)
         else:
             color_json = None
+
         ncol = len(result_dict[method]["result"]) + 1
-        fig, axes = plt.subplots(1, ncol, figsize=(ncol * 10, 10))
+        fig, axes = plt.subplots(1, ncol, figsize=(ncol * 10, 10), dpi=300)
         [ax.axis("off") for ax in axes]
         if he_image is not None:
             [ax.imshow(he_image) for ax in axes]
-        if color_json is None:
-            sc = axes[0].scatter(
-                coor_df["X"],
-                coor_df["Y"],
-                s=s,
-                cmap="tab20",
-                c=label_series,
-            )
-            legend = axes[0].legend(*sc.legend_elements())
-            axes[0].add_artist(legend)
-        else:
-            for i in color_json["anno"]:
-                spots = label_series[label_series == int(i)].index
+
+        # draw annotated region on axes[0]
+        if color_json is not None:
+            if "anno" in color_json:
+                for i in color_json["anno"]:
+                    label_series = label_series.replace(
+                        int(i), color_json["anno"][i])
+
+        color_list = [mpl.colors.rgb2hex(i) for i in plt.cm.tab20.colors]
+        unnamed_clusters = []
+        for cluster in set(label_series):
+            if isinstance(cluster, str):
+                color = cluster
+                color_list.remove(cluster)
+                spots = label_series[label_series == cluster]
                 axes[0].scatter(
-                    coor_df["X"].reindex(index=spots),
-                    coor_df["Y"].reindex(index=spots),
+                    coor_df["X"].reindex(index=spots.index),
+                    coor_df["Y"].reindex(index=spots.index),
                     s=s,
-                    cmap="tab20",
-                    c=color_json["anno"][i],
-                    label=i,
+                    color=color,
+                    label=str(cluster),
                 )
-            axes[0].legend(ncol=2)
+            else:
+                unnamed_clusters.append(cluster)
+        for i, unnamed_cluster in enumerate(unnamed_clusters):
+            spots = label_series[label_series == unnamed_cluster]
+            axes[0].scatter(
+                coor_df["X"].reindex(index=spots.index),
+                coor_df["Y"].reindex(index=spots.index),
+                s=s,
+                color=color_list[i],
+                label=str(unnamed_cluster),
+            )
+        axes[0].legend(ncol=2, markerscale=10)
         axes[0].set_title("Annotated region")
+
+        # draw rank
         for ax, rank in zip(axes[1:], result_dict[method]["result"]):
-            c = result_dict[method]["result"][rank]
+            c = result_dict[method]["result"][rank].copy()
             if color_json is not None:
                 if rank in color_json:
                     for i in color_json[rank]:
                         c = c.replace(int(i), color_json[rank][i])
-            if color_json is None:
-                sc = ax.scatter(coor_df["X"], coor_df["Y"], s=s, cmap="tab20", c=c)
-                legend = ax.legend(*sc.legend_elements())
-                ax.add_artist(legend)
-            else:
-                for i in color_json[rank]:
-                    spots = label_series[label_series == int(i)].index
-                    axes[0].scatter(
-                        coor_df["X"].reindex(index=spots),
-                        coor_df["Y"].reindex(index=spots),
+
+            color_list = [mpl.colors.rgb2hex(i) for i in plt.cm.tab20.colors]
+            unnamed_clusters = []
+            for cluster in set(c):
+                if isinstance(cluster, str):
+                    color = cluster
+                    color_list.remove(cluster)
+                    spots = c[c == cluster]
+                    ax.scatter(
+                        coor_df["X"].reindex(index=spots.index),
+                        coor_df["Y"].reindex(index=spots.index),
                         s=s,
-                        cmap="tab20",
-                        c=color_json[rank][i],
-                        label=i,
+                        color=color,
+                        label=str(cluster),
                     )
-                ax.legend(ncol=2)
+                else:
+                    unnamed_clusters.append(cluster)
+            for i, unnamed_cluster in enumerate(unnamed_clusters):
+                spots = c[c == unnamed_cluster]
+                ax.scatter(
+                    coor_df["X"].reindex(index=spots.index),
+                    coor_df["Y"].reindex(index=spots.index),
+                    s=s,
+                    color=color_list[i],
+                    label=str(unnamed_cluster),
+                )
+            ax.legend(ncol=2, markerscale=10)
             ax.set_title(rank)
         fig.savefig(
             f"results/cluster_index/{sample}-step{step}-{method}-{title}.jpg",
@@ -338,23 +366,42 @@ def draw_cluster_separate(
                 color_json = json.load(f)
         else:
             color_json = None
-        fig, ax = plt.subplots(figsize=(10, 10))
+
+        fig, ax = plt.subplots(figsize=(10, 10), dpi=600)
         ax.axis("off")
         ax.imshow(he_image) if he_image is not None else None
         if color_json is not None:
-            for i in color_json["anno"]:
-                label_series = label_series.replace(
-                    int(i),
-                    color_json["anno"][i],
+            if "anno" in color_json:
+                for i in color_json["anno"]:
+                    label_series = label_series.replace(
+                        int(i), color_json["anno"][i])
+
+        color_list = [mpl.colors.rgb2hex(i) for i in plt.cm.tab20.colors]
+        unnamed_clusters = []
+        for cluster in set(label_series):
+            if isinstance(cluster, str):
+                color = cluster
+                color_list.remove(cluster)
+                spots = label_series[label_series == cluster]
+                ax.scatter(
+                    coor_df["X"].reindex(index=spots.index),
+                    coor_df["Y"].reindex(index=spots.index),
+                    s=s,
+                    color=color,
+                    label=str(cluster),
                 )
-        ax.scatter(
-            coor_df["X"],
-            coor_df["Y"],
-            s=s,
-            cmap="tab20",
-            c=label_series,
-        )
-        ax.set_title("Annotation region")
+            else:
+                unnamed_clusters.append(cluster)
+        for i, unnamed_cluster in enumerate(unnamed_clusters):
+            spots = label_series[label_series == unnamed_cluster]
+            ax.scatter(
+                coor_df["X"].reindex(index=spots.index),
+                coor_df["Y"].reindex(index=spots.index),
+                s=s,
+                color=color_list[i],
+                label=str(unnamed_cluster),
+            )
+        ax.set_title("Annotated region")
         fig.savefig(
             Path.joinpath(
                 WORKDIR,
@@ -365,16 +412,44 @@ def draw_cluster_separate(
             transparent=True,
         )
         plt.close(fig)
+
         for rank in result_dict[method]["result"]:
-            c = result_dict[method]["result"][rank]
+            c = result_dict[method]["result"][rank].copy()
             if color_json is not None:
                 if rank in color_json:
                     for i in color_json[rank]:
                         c = c.replace(int(i), color_json[rank][i])
+
             fig, ax = plt.subplots(figsize=(10, 10))
+
+            color_list = [mpl.colors.rgb2hex(i) for i in plt.cm.tab20.colors]
+            unnamed_clusters = []
+            for cluster in set(c):
+                if isinstance(cluster, str):
+                    color = cluster
+                    color_list.remove(cluster)
+                    spots = c[c == cluster]
+                    ax.scatter(
+                        coor_df["X"].reindex(index=spots.index),
+                        coor_df["Y"].reindex(index=spots.index),
+                        s=s,
+                        color=color,
+                        label=str(cluster),
+                    )
+                else:
+                    unnamed_clusters.append(cluster)
+            for i, unnamed_cluster in enumerate(unnamed_clusters):
+                spots = c[c == unnamed_cluster]
+                ax.scatter(
+                    coor_df["X"].reindex(index=spots.index),
+                    coor_df["Y"].reindex(index=spots.index),
+                    s=s,
+                    color=color_list[i],
+                    label=str(unnamed_cluster),
+                )
+
             ax.imshow(he_image) if he_image is not None else None
             ax.axis("off")
-            ax.scatter(coor_df["X"], coor_df["Y"], s=s, cmap="tab20", c=c)
             ax.set_title(rank)
             rank = rank.replace(" - ", "_")
             fig.savefig(
@@ -465,7 +540,7 @@ rank_dict = read_rank(sample)
 
 for step in (500, ):
     bayesspace_result = perform_bayesspace(sample, label_series, step, seed=42)
-    draw_matrix(bayesspace_result, sample, step, "BayesSpace", "ARI")
+    draw_matrix(bayesspace_result, sample, step, "BayesSpace", "ARI", 0.6)
     draw_cluster(
         bayesspace_result,
         label_series,
@@ -494,18 +569,20 @@ rank_dict = read_rank(sample)
 
 for step in (500, ):
     bayesspace_result = perform_bayesspace(sample, label_series, step)
-    draw_matrix(bayesspace_result, sample, step, "BayesSpace", "ARI")
+    draw_matrix(bayesspace_result, sample, step, "BayesSpace", "ARI", 0.5)
     draw_cluster(
         bayesspace_result,
         label_series,
-        8,
+        1,
         "BayesSpace",
-        read_color_json=False,
+        # read_color_json=False,
+        seed=42,
     )
     draw_cluster_separate(
         {"SVGbit": bayesspace_result["SVGbit"]},
         label_series,
-        8,
+        1,
         "BayesSpace",
-        read_color_json=False,
+        # read_color_json=False,
+        seed=42,
     )
