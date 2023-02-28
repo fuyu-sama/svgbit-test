@@ -235,17 +235,22 @@ def draw_cluster(
         methods = ["SVGbit"]
     label_series = replace_label(label_series)
 
+    step = list(
+        bayesspace_result['SVGbit']['result'].keys())[0].split(' - ')[1]
+
     for method in methods:
         if read_color_json:
             if seed is None:
                 json_path = Path.joinpath(
-                    WORKDIR, f"results/{title}/{sample}-{method}.json")
+                    WORKDIR,
+                    f"results/{title}/{sample}-step{step}-{method}.json",
+                )
             else:
                 json_path = Path.joinpath(
                     WORKDIR,
                     f"results/{title.lower()}/",
                     f"seed-{seed}/",
-                    f"{sample}-{method}.json",
+                    f"{sample}-step{step}-{method}.json",
                 )
             with open(json_path) as f:
                 color_json = json.load(f)
@@ -349,18 +354,24 @@ def draw_cluster_separate(
         methods = result_dict.keys()
     else:
         methods = ["SVGbit"]
+
+    step = list(
+        bayesspace_result['SVGbit']['result'].keys())[0].split(' - ')[1]
+
     label_series = replace_label(label_series)
     for method in methods:
         if read_color_json:
             if seed is None:
                 json_path = Path.joinpath(
-                    WORKDIR, f"results/{title}/{sample}-{method}.json")
+                    WORKDIR,
+                    f"results/{title}/{sample}-step{step}-{method}.json",
+                )
             else:
                 json_path = Path.joinpath(
                     WORKDIR,
                     f"results/{title.lower()}/",
                     f"seed-{seed}/",
-                    f"{sample}-{method}.json",
+                    f"{sample}-step{step}-{method}.json",
                 )
             with open(json_path) as f:
                 color_json = json.load(f)
@@ -538,8 +549,14 @@ he_image = read_image.read_dlpfc_image(sample)
 sample = f"DLPFC-{sample}"
 rank_dict = read_rank(sample)
 
-for step in (500, ):
-    bayesspace_result = perform_bayesspace(sample, label_series, step, seed=42)
+# for step in (500, 600, 700, 800, 900, 1000):
+for step in (900, ):
+    bayesspace_result = perform_bayesspace(
+        sample,
+        label_series,
+        step,
+        seed=42,
+    )
     draw_matrix(bayesspace_result, sample, step, "BayesSpace", "ARI", 0.6)
     draw_cluster(
         bayesspace_result,
@@ -547,7 +564,7 @@ for step in (500, ):
         32,
         "BayesSpace",
         he_image,
-        read_color_json=True,
+        # read_color_json=False,
         seed=42,
     )
     draw_cluster_separate(
@@ -555,7 +572,7 @@ for step in (500, ):
         label_series,
         50,
         "BayesSpace",
-        read_color_json=True,
+        # read_color_json=False,
         seed=42,
     )
 
@@ -567,7 +584,7 @@ coor_df = coor_df.reindex(index=count_df.index)
 label_series = label_series.reindex(index=coor_df.index).astype("str")
 rank_dict = read_rank(sample)
 
-for step in (500, ):
+for step in (800, ):
     bayesspace_result = perform_bayesspace(sample, label_series, step)
     draw_matrix(bayesspace_result, sample, step, "BayesSpace", "ARI", 0.5)
     draw_cluster(
@@ -575,7 +592,7 @@ for step in (500, ):
         label_series,
         1,
         "BayesSpace",
-        # read_color_json=False,
+        read_color_json=False,
         seed=42,
     )
     draw_cluster_separate(
@@ -583,6 +600,6 @@ for step in (500, ):
         label_series,
         1,
         "BayesSpace",
-        # read_color_json=False,
+        read_color_json=False,
         seed=42,
     )
