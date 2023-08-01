@@ -62,8 +62,8 @@ read_stereo <- function(sample) {
     rownames(coor_df) <- colnames(count_df)
 
     return(list(
-            count_df = count_df, 
-            logcounts_df = logcounts_df, 
+            count_df = count_df,
+            logcounts_df = logcounts_df,
             coor_df = coor_df))
 }
 
@@ -100,4 +100,21 @@ read_dlpfc <- function(sample) {
             logcounts_df = logcounts_df,
             coor_df = coor_df,
             array_df = array_df))
+}
+
+read_self <- function(sample) {
+    # count_df: genes * spots
+    count_path <- paste0(
+        WORKDIR, "data/mouse-brain-full/Data/scale_df/raw/", sample, "-raw.csv"
+    )
+    coor_path <- paste0(
+        WORKDIR, "data/mouse-brain-full/Data/coor_df/", sample, "-coor.csv"
+    )
+
+    count_df <- read.csv(count_path, row.names = 1, check.names = FALSE)
+    coor_df <- read.csv(coor_path, row.names = 1)
+    colnames(coor_df) <- c("X", "Y")
+    coor_df <- coor_df[colnames(count_df), ]
+
+    return(list(count_df = count_df, coor_df = coor_df))
 }

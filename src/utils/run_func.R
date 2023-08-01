@@ -10,7 +10,7 @@ run_spark <- function(count_df, coor_df) {
         spark_obj,
         covariates = NULL,
         lib_size = spark_obj@lib_size,
-        num_core = 1,
+        num_core = 5,
         verbose = FALSE
     )
     spark_obj <- spark.test(
