@@ -4,7 +4,10 @@ This repository contains test codes used by *The spatiotemporal dynamics of
 spatially variable genes in developing mouse brain revealed by a novel
 computational scheme*. For detailed information, please refer to our publication.
 
-For more information about SVGBit, please visit
+Paper link:
+https://www.nature.com/articles/s41420-023-01569-w
+
+For more information about SVGbit, please visit
 https://github.com/CPenglab/svgbit
 
 ## File detail
