@@ -71,7 +71,6 @@ def match_labels(labels, results):
         for region in set(labels.values):
             region_spots = set(labels[labels == region].index)
             dist = jaccard_index(region_spots, cluster_spots)
-            # dist = len(region_spots & cluster_spots)
             if dist > max_dist:
                 max_dist, max_dist_region = dist, region
         temp_series = pd.Series(

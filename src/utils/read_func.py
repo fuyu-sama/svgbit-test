@@ -65,6 +65,7 @@ def read_als(sample):
 
 
 def read_stereo(sample):
+    # count_df: spots * genes
     adata = sc.read_h5ad(
         f"data/2022_Cell_Stereo-seq/STDS0000058/stomics/{sample}.h5ad")
     count_df = pd.DataFrame.sparse.from_spmatrix(
