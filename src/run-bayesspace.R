@@ -7,20 +7,18 @@ library(SingleCellExperiment)
 library(foreach)
 library(doParallel)
 
-WORKDIR <- paste0(Sys.getenv("HOME"), "/workspace/svgbit_local_test/")
+WORKDIR <- fs::path(Sys.getenv("HOME"), "workspace", "svgbit-test")
 renv::activate(WORKDIR)
 
-registerDoParallel(cores=5)
+registerDoParallel(cores=10)
 
-source(paste0(WORKDIR, "src/utils/read_func.R"))
-source(paste0(WORKDIR, "src/utils/utils.R"))
+source(fs::path(WORKDIR, "src", "utils", "read_func.R"))
+source(fs::path(WORKDIR, "src", "utils", "utils.R"))
 
 perform_bayesspace <- function(sce, rank_list, step, platform, ncs) {
-    for (method in names(rank_list)) {
-    #foreach(method = names(rank_list)) %dopar% {
-        #for (begin in seq(0, step * 4, step)) {
-        foreach(begin = seq(0, step * 4, step)) %dopar% {
-            seed <- 42
+    foreach(method = names(rank_list)) %dopar% {
+        for (begin in seq(0, step * 4, step)) {
+            seed <- 10086
             set.seed(seed)
             print(paste0(
                 "Now performing ", method, ": ", begin + 1, " - ", begin + step))
@@ -43,80 +41,116 @@ perform_bayesspace <- function(sce, rank_list, step, platform, ncs) {
                 model="t"
             )
             bayesspace_result <- as.data.frame(sce_sub@colData)
-            if (exists("seed")) {
-                write_path <- paste0(
-                    WORKDIR, "results/bayesspace/seed-", seed, "/",
-                    sample, "-", method, "-", begin, "_", begin + step,
-                    "-", "bayesspace.csv"
-                )
-            } else {
-                write_path <- paste0(
-                    WORKDIR, "results/bayesspace/",
-                    sample, "-", method, "-", begin, "_", begin + step,
-                    "-", "bayesspace.csv"
-                )
-            }
+            file_name <- paste0(
+                sample, "-", method, "-", begin, "_", begin + step, "-", "bayesspace.csv"
+            )
+            write_path <- fs::path(WORKDIR, "results", "bayesspace", file_name)
             write.csv(bayesspace_result, write_path)
-        } -> ...
-    }
+        }
+    } -> ...
 }
 
 read_results <- function(sample) {
     rank_list <- list()
 
-    read_df <- read.csv(paste0(WORKDIR, "results/", sample, "/AI.csv"), row.names = 1)
+    read_df <- read.csv(
+        fs::path(WORKDIR, "results", "svgbit", sample, "AI.csv"), row.names = 1
+    )
     read_df <- read_df %>% arrange(desc(AI))
     rank_list$SVGbit <- rownames(read_df)
 
-    try({
-        read_df <- read.csv(
-            paste0(WORKDIR, "results/somde/", sample, "-somde.csv"),
+    read_df <- try({
+        read.csv(
+            fs::path(WORKDIR, "results", "SOMDE", paste0(sample, ".csv")),
             row.names = 1
         )
+    })
+    if (!inherits(read_df, "try-error")) {
         read_df <- read_df %>% arrange(qval)
         rank_list$SOMDE <- read_df$g
-    })
+    }
 
-    try({
-        read_df <- read.csv(
-            paste0(WORKDIR, "results/spatialde/", sample, "-spatialde.csv"),
+    read_df <- try({
+        read.csv(
+            fs::path(WORKDIR, "results", "SpatialDE", paste0(sample, ".csv")),
             row.names = 1
         )
+    })
+    if (!inherits(read_df, "try-error")) {
         read_df <- read_df %>% arrange(qval)
         rank_list$SpatialDE <- read_df$g
-    })
+    }
 
-    try({
-        read_df <- read.csv(
-            paste0(WORKDIR, "results/spark/", sample, "-spark.csv"),
+    read_df <- try({
+        read.csv(
+            fs::path(WORKDIR, "results", "SPARK", paste0(sample, ".csv")),
             row.names = 1
         )
+    })
+    if (!inherits(read_df, "try-error")) {
         read_df <- read_df %>% arrange(adjusted_pvalue)
         rank_list$SPARK <- rownames(read_df)
+    }
+
+    read_df <- try({
+        read.csv(
+            fs::path(WORKDIR, "results", "DESpace", paste0(sample, ".csv")),
+            row.names = 1
+        )
     })
+    if (!inherits(read_df, "try-error")) {
+        read_df <- read_df %>% arrange(FDR)
+        rank_list$DESpace <- rownames(read_df)
+    }
+
+    read_df <- try({
+        read.csv(
+            fs::path(WORKDIR, "results", "HEARTSVG", paste0(sample, ".csv")),
+            row.names = 1
+        )
+    })
+    if (!inherits(read_df, "try-error")) {
+        read_df <- read_df %>% arrange(rank)
+        rank_list$HEARTSVG <- read_df$gene
+    }
+
+    read_df <- try({
+        read.csv(
+            fs::path(WORKDIR, "results", "MERINGUE", paste0(sample, ".csv")),
+            row.names = 1
+        )
+    })
+    if (!inherits(read_df, "try-error")) {
+        read_df <- read_df %>% arrange(p.adj)
+        rank_list$MERINGUE <- rownames(read_df)
+    }
 
     return(rank_list)
 }
 
 # %%
-sample <- 151673
+samples <- c(
+    151507, 151508, 151509, 151510, 151670, 151671, 151673,
+    151674, 151675, 151676
+    #151669, 151672,
+)
 platform <- "Visium"
 ncs <- 7
-read_files <- read_dlpfc(sample)
-sample <- paste0("DLPFC-", sample)
-rank_list <- read_results(sample)
-sce <- SingleCellExperiment(
-    assays = list(
-        counts = as(as.matrix(read_files$count_df), "dgCMatrix"),
-        logcounts = as(as.matrix(read_files$logcounts_df), "dgCMatrix")),
-    colData = read_files$array_df
-)
-sce <- sce[, colSums(counts(sce)) > 0]
-for (step in c(500)) {
+for (sample in samples) {
+    read_files <- read_dlpfc(sample)
+    sample <- paste0("DLPFC-", sample)
+    rank_list <- read_results(sample)
+    sce <- SingleCellExperiment(
+        assays = list(
+            counts = as(as.matrix(read_files$count_df), "dgCMatrix"),
+            logcounts = as(as.matrix(read_files$logcount_df), "dgCMatrix")),
+        colData = read_files$array_df
+    )
+    sce <- sce[, colSums(counts(sce)) > 0]
     perform_bayesspace(
         sce,
         rank_list,
-        step,
+        500,
         platform,
         ncs
     )
@@ -128,21 +162,17 @@ platform <- "ST"
 ncs <- 20
 read_files <- read_stereo(sample)
 rank_list <- read_results(sample)
-array_df <- split_coor(colnames(read_files$count_df))
-colnames(array_df) <- c("row", "col")
 sce <- SingleCellExperiment(
     assays = list(
         counts = as(as.matrix(read_files$count_df), "dgCMatrix"),
-        logcounts = as(as.matrix(read_files$logcounts_df), "dgCMatrix")),
-    colData = array_df
+        logcounts = as(as.matrix(read_files$logcount_df), "dgCMatrix")),
+    colData = read_files$array_df
 )
 sce <- sce[, colSums(counts(sce)) > 0]
-for (step in c(500)) {
-    perform_bayesspace(
-        sce,
-        rank_list,
-        step,
-        platform,
-        ncs
-    )
-}
+perform_bayesspace(
+    sce,
+    rank_list,
+    500,
+    platform,
+    ncs
+)

@@ -6,59 +6,77 @@ from pathlib import Path
 
 import src.utils.read_func as read_func
 import src.utils.run_func as run_func
-import src.utils.read_label as read_label
+from src.utils.read_func import WORKDIR
 
-WORKDIR = read_func.WORKDIR
-
-# %% mba
-gsm = "GSM4459950"
-sample = "18A"
-count_df, coor_df = read_func.read_mba(gsm, sample)
-result = run_func.run_spatialde(count_df, coor_df)
-result.to_csv(
-    Path.joinpath(WORKDIR, f"results/spatialde/{sample}-spatialde.csv"))
-
-# %% als
-sample = "GSM3399149_CN68_E1"
-count_df, coor_df = read_func.read_als(sample)
-result = run_func.run_spatialde(count_df, coor_df)
-result.to_csv(
-    Path.joinpath(WORKDIR, f"results/spatialde/{sample}-spatialde.csv"))
-
-# %% stereo
-sample = "E9.5_E1S1.MOSTA"
-count_df, coor_df = read_func.read_stereo(sample)
-result = run_func.run_spatialde(count_df, coor_df)
-result.to_csv(
-    Path.joinpath(WORKDIR, f"results/spatialde/{sample}-spatialde.csv"))
-
-# %% stereo
-sample = "Mouse_brain"
-count_df, coor_df = read_func.read_stereo(sample)
-if sample == "Mouse_brain":
-    count_df = count_df[count_df.T.sum() > 1500]
-    coor_df = coor_df.reindex(index=count_df.index)
-result = run_func.run_spatialde(count_df, coor_df)
-result.to_csv(
-    Path.joinpath(WORKDIR, f"results/spatialde/{sample}-spatialde.csv"))
+write_dir = Path.joinpath(WORKDIR, "results", "SpatialDE")
+if not write_dir.exists():
+    write_dir.mkdir()
 
 # %% DLPFC
-sample = 151673
 samples = [
     151507, 151508, 151509, 151510, 151669, 151670, 151671, 151672, 151673,
     151674, 151675, 151676
 ]
 for sample in samples:
-    count_df, coor_df, _ = read_func.read_dlpfc(sample)
-    coor_df.columns = ["X", "Y"]
-    labels = read_label.read_dlpfc_label(sample)
-    na_spots = labels[labels.isna()].index
-    count_df = count_df.drop(index=na_spots)
-    coor_df = coor_df.drop(index=na_spots)
-    count_df = count_df.reindex(columns=count_df.columns[count_df.sum() > 0])
-    result = run_func.run_spatialde(count_df, coor_df)
-    result.to_csv(
-        Path.joinpath(
-            WORKDIR,
-            f"results/spatialde/DLPFC-{sample}-spatialde.csv",
-        ))
+    reads = read_func.read_dlpfc(sample)
+    result = run_func.run_spatialde(reads.count_df, reads.coor_df)
+    result.to_csv(Path.joinpath(write_dir, f"DLPFC-{sample}.csv"))
+
+# %% stereo
+sample = "E9.5_E1S1.MOSTA"
+reads = read_func.read_stereo(sample)
+result = run_func.run_spatialde(reads.count_df, reads.coor_df)
+result.to_csv(Path.joinpath(write_dir, f"{sample}.csv"))
+
+# %% stereo
+sample = "Mouse_brain"
+reads = read_func.read_stereo(sample)
+count_df = reads.count_df
+coor_df = reads.coor_df
+if sample == "Mouse_brain":
+    count_df = count_df[count_df.T.sum() > 1500]
+    coor_df = coor_df.reindex(index=count_df.index)
+result = run_func.run_spatialde(count_df, coor_df)
+result.to_csv(Path.joinpath(write_dir, f"{sample}.csv"))
+
+# %% iimpact
+samples = [
+    "human_breast_cancer", "human_ovarian_cancer", "human_prostate_cancer"
+]
+for sample in samples:
+    reads = read_func.read_iimpact(sample)
+    result = run_func.run_spatialde(reads.count_df, reads.coor_df)
+    result.to_csv(Path.joinpath(write_dir, f"{sample}.csv"))
+
+# %% mba
+for sample in read_func.mba_files.keys():
+    reads = read_func.read_mba(sample)
+    try:
+        result = run_func.run_spatialde(reads.count_df, reads.coor_df)
+        result.to_csv(Path.joinpath(write_dir, f"{sample}.csv"))
+    except:
+        continue
+
+# %% GBM
+samples = ["21B-603-5", "22F-10823-3", "22F-21576-1", "22F-23738-2"]
+for sample in samples:
+    reads = read_func.read_gbm(sample)
+    reads.count_df
+    result = run_func.run_spatialde(
+        reads.count_df.sparse.to_dense(),
+        reads.coor_df,
+    )
+    result.to_csv(Path.joinpath(write_dir, f"{sample}.csv"))
+
+# %%
+samples = [
+    "E135A", "E135B", "E155A", "E155B", "E165A", "E165B", "E175A1", "E175A2",
+    "E175B", "P0A1", "P0A2", "P0B"
+]
+for sample in samples:
+    reads = read_func.read_self(sample)
+    result = run_func.run_spatialde(
+        reads.count_df.sparse.to_dense(),
+        reads.coor_df,
+    )
+    result.to_csv(Path.joinpath(write_dir, f"{sample}.csv"))
